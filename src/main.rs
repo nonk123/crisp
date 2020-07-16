@@ -1,3 +1,5 @@
-fn main() {
-    println!("Hello, world!");
+mod repl;
+
+fn main() -> std::io::Result<()> {
+    repl::mainloop()
 }
