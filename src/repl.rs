@@ -1,6 +1,8 @@
 use std::io;
 use std::io::Write;
 
+use crate::crisp;
+
 fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
 
@@ -19,7 +21,8 @@ fn read_line() -> io::Result<String> {
 
 pub fn mainloop() -> io::Result<()> {
     loop {
-        print!("> "); io::stdout().flush()?;
+        print!("> ");
+        io::stdout().flush()?;
 
         let input = read_line()?;
 
@@ -28,6 +31,9 @@ pub fn mainloop() -> io::Result<()> {
             return Ok(());
         }
 
-        println!("Hello, {}!", input);
+        match crisp::eval(input) {
+            Ok(tree) => println!("{}", tree.join(" ")),
+            Err(error) => println!("{:?}", error),
+        }
     }
 }
