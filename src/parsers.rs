@@ -5,9 +5,10 @@ pub enum ParserError {
     MalformedSymbol(String),
     MalformedInteger,
     IntegerOverflow,
+    NoMatchingParser,
 }
 
-type ParserResult = Result<Value, ParserError>;
+pub type ParserResult = Result<Value, ParserError>;
 
 pub trait Parser {
     fn can_parse(&self, buffer: &String) -> bool;
@@ -143,17 +144,76 @@ impl Parser for SymbolParser {
     }
 }
 
-pub fn determine_parser(buffer: &String) -> Option<Box<dyn Parser>> {
+struct ListParser;
+
+impl ListParser {
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl Parser for ListParser {
+    fn can_parse(&self, list: &String) -> bool {
+        let list = {
+            if list.chars().nth(0) == Some('\'') {
+                list[1..].to_string()
+            } else {
+                list.clone()
+            }
+        };
+
+        list.chars().nth(0) == Some('(') && list.chars().last() == Some(')')
+    }
+
+    fn parse(&self, list: &String) -> ParserResult {
+        let mut quoted = false;
+
+        let list = {
+            if list.chars().nth(0) == Some('\'') {
+                quoted = true;
+                list[2..].to_string()
+            } else {
+                list[1..].to_string()
+            }
+        };
+
+        let mut elements: Vec<Value> = Vec::new();
+
+        let mut depth = 0;
+
+        let mut element = String::new();
+
+        for character in list.chars() {
+            if depth == 0 && [' ', '\t', ')'].contains(&character) {
+                elements.push(parse(&element)?);
+                element = String::new();
+            } else {
+                element.push(character);
+            }
+
+            if character == '(' {
+                depth += 1;
+            } else if character == ')' {
+                depth -= 1;
+            }
+        }
+
+        Ok(Value::List { elements, quoted })
+    }
+}
+
+pub fn parse(buffer: &String) -> ParserResult {
     let parsers: Vec<Box<dyn Parser>> = vec![
+        Box::new(ListParser::new()),
         Box::new(IntegerParser::new()),
         Box::new(SymbolParser::new()),
     ];
 
     for parser in parsers {
         if parser.can_parse(&buffer) {
-            return Some(parser);
+            return parser.parse(buffer);
         }
     }
 
-    None
+    Err(ParserError::NoMatchingParser)
 }

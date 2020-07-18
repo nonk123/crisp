@@ -1,7 +1,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::crisp::{eval, Closure, Environment, Value};
+use crate::crisp::{eval, Closure, Environment, EvalError, EvalResult, Value};
 
 fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
@@ -29,7 +29,25 @@ pub fn mainloop() -> io::Result<()> {
     let mut bot = Closure::new();
     bot.put_str("answer", Value::Integer(43));
     bot.put_str("real-answer", Value::Integer(42));
-    environment.push(bot);
+    environment.push_to_stack(bot);
+
+    fn car(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+        if args.len() != 1 {
+            Err(EvalError::ArgsMismatch)
+        } else {
+            let arg = args.first().unwrap().eval(environment)?;
+
+            match arg {
+                Value::List {
+                    elements,
+                    quoted: _,
+                } => elements.first().unwrap_or(&Value::Nil).eval(environment),
+                _ => Err(EvalError::ArgsMismatch),
+            }
+        }
+    }
+
+    environment.add_function_str("car", car);
 
     loop {
         print!("> ");
