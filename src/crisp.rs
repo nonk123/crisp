@@ -45,7 +45,8 @@ pub enum Value {
     Nil,
     Integer(CrispInteger),
     Symbol { symbol: Symbol, quoted: bool },
-    List { elements: Vec<Value>, quoted: bool },
+    Funcall(Symbol, Vec<Value>),
+    List(Vec<Value>),
 }
 
 impl Value {
@@ -61,19 +62,17 @@ impl Value {
                     }
                 }
             }
-            Value::List { elements, quoted } => {
-                if *quoted || elements.is_empty() {
-                    return Ok(self.clone());
+            Value::Funcall(symbol, args) => environment.call(symbol, args.to_vec()),
+            Value::List(elements) => {
+                let mut evaluated: Vec<Value> = Vec::new();
+
+                for element in elements.iter() {
+                    evaluated.push(element.eval(environment)?);
                 }
 
-                if let Value::Symbol { symbol, quoted: _ } = elements.first().unwrap() {
-                    let cdr = elements.iter().skip(1).cloned().collect();
-                    environment.call(symbol, cdr)
-                } else {
-                    Ok(self.clone())
-                }
+                Ok(Value::List(evaluated))
             }
-            _ => Ok(self.clone()),
+            _ => Ok(self.to_owned()),
         }
     }
 }

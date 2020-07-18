@@ -144,38 +144,53 @@ impl Parser for SymbolParser {
     }
 }
 
-struct ListParser;
+struct BracketParser {
+    pairs: Vec<(char, char)>,
+}
 
-impl ListParser {
+impl BracketParser {
     fn new() -> Self {
-        Self
+        Self {
+            pairs: vec![('(', ')'), ('[', ']')],
+        }
+    }
+
+    fn find_matching_bracket(&self, list: &String) -> char {
+        if let Some(opening) = list.chars().nth(0) {
+            for (left, right) in self.pairs.iter().cloned() {
+                if left == opening {
+                    return right;
+                }
+            }
+        }
+
+        return ' ';
+    }
+
+    fn get_opening(&self) -> Vec<char> {
+        self.pairs.iter().map(|pair| pair.0).collect()
+    }
+
+    fn get_closing(&self) -> Vec<char> {
+        self.pairs.iter().map(|pair| pair.1).collect()
     }
 }
 
-impl Parser for ListParser {
+impl Parser for BracketParser {
     fn can_parse(&self, list: &String) -> bool {
-        let list = {
-            if list.chars().nth(0) == Some('\'') {
-                list[1..].to_string()
-            } else {
-                list.clone()
+        for (left, right) in self.pairs.iter().cloned() {
+            if list.chars().nth(0) == Some(left) && list.chars().last() == Some(right) {
+                return true;
             }
-        };
+        }
 
-        list.chars().nth(0) == Some('(') && list.chars().last() == Some(')')
+        false
     }
 
     fn parse(&self, list: &String) -> ParserResult {
-        let mut quoted = false;
+        let matching = self.find_matching_bracket(&list);
 
-        let list = {
-            if list.chars().nth(0) == Some('\'') {
-                quoted = true;
-                list[2..].to_string()
-            } else {
-                list[1..].to_string()
-            }
-        };
+        let list = list[1..].to_string();
 
         let mut elements: Vec<Value> = Vec::new();
 
@@ -184,27 +199,36 @@ impl Parser for ListParser {
         let mut element = String::new();
 
         for character in list.chars() {
-            if depth == 0 && [' ', '\t', ')'].contains(&character) {
+            if depth == 0 && [' ', '\t', matching].contains(&character) {
                 elements.push(parse(&element)?);
                 element = String::new();
             } else {
                 element.push(character);
             }
 
-            if character == '(' {
+            if self.get_opening().contains(&character) {
                 depth += 1;
-            } else if character == ')' {
+            } else if self.get_closing().contains(&character) {
                 depth -= 1;
             }
         }
 
-        Ok(Value::List { elements, quoted })
+        if matching == ')' && !elements.is_empty() {
+            if let Value::Symbol { symbol, quoted } = elements.first().unwrap() {
+                if !quoted {
+                    let cdr = elements.iter().skip(1).cloned().collect();
+                    return Ok(Value::Funcall(symbol.clone(), cdr));
+                }
+            }
+        }
+
+        Ok(Value::List(elements))
     }
 }
 
 pub fn parse(buffer: &String) -> ParserResult {
     let parsers: Vec<Box<dyn Parser>> = vec![
-        Box::new(ListParser::new()),
+        Box::new(BracketParser::new()),
         Box::new(IntegerParser::new()),
         Box::new(SymbolParser::new()),
     ];

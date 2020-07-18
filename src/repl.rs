@@ -38,10 +38,7 @@ pub fn mainloop() -> io::Result<()> {
             let arg = args.first().unwrap().eval(environment)?;
 
             match arg {
-                Value::List {
-                    elements,
-                    quoted: _,
-                } => elements.first().unwrap_or(&Value::Nil).eval(environment),
+                Value::List(elements) => elements.first().unwrap_or(&Value::Nil).eval(environment),
                 _ => Err(EvalError::ArgsMismatch),
             }
         }
