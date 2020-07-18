@@ -1,11 +1,25 @@
 use crate::parsers::{determine_parser, ParserError};
 
-pub type EvalTree = Vec<String>;
+pub type CrispInteger = i32;
 
-pub fn eval(buffer: String) -> Result<EvalTree, ParserError> {
+#[derive(Debug)]
+pub enum Value {
+    Integer(CrispInteger),
+    Symbol(String),
+}
+
+#[derive(Debug)]
+pub enum EvalError {
+    ErrorDuringParsing(ParserError),
+    NoParserAvailable,
+}
+
+pub type EvalResult = Result<Value, EvalError>;
+
+pub fn eval(buffer: String) -> EvalResult {
     if let Some(parser) = determine_parser(&buffer) {
-        parser.parse(&buffer)
+        parser.parse(&buffer).map_err(EvalError::ErrorDuringParsing)
     } else {
-        Err(ParserError::NoParserAvailable)
+        Err(EvalError::NoParserAvailable)
     }
 }

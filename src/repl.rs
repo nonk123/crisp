@@ -32,7 +32,7 @@ pub fn mainloop() -> io::Result<()> {
         }
 
         match crisp::eval(input) {
-            Ok(tree) => println!("{}", tree.join(" ")),
+            Ok(value) => println!("{:?}", value),
             Err(error) => println!("{:?}", error),
         }
     }
