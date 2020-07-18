@@ -1,4 +1,4 @@
-use crate::crisp::{CrispInteger, Value};
+use crate::crisp::{CrispInteger, Symbol, Value};
 
 #[derive(Debug)]
 pub enum ParserError {
@@ -26,7 +26,7 @@ impl Parser for IntegerParser {
     fn can_parse(&self, number: &String) -> bool {
         let mut number = number.clone();
 
-        if vec![Some('-'), Some('+')].contains(&number.chars().nth(0)) {
+        if [Some('-'), Some('+')].contains(&number.chars().nth(0)) {
             number = number[1..].to_string();
         }
 
@@ -118,9 +118,14 @@ impl Parser for SymbolParser {
     fn parse(&self, token: &String) -> ParserResult {
         let mut token = token.clone();
 
-        if token.chars().nth(0) == Some('\'') {
-            token = token[1..].to_string();
-        }
+        let quoted = {
+            if token.chars().nth(0) == Some('\'') {
+                token = token[1..].to_string();
+                true
+            } else {
+                false
+            }
+        };
 
         for character in token.chars() {
             if !self.allowed_characters.contains(&character) {
@@ -131,7 +136,10 @@ impl Parser for SymbolParser {
             }
         }
 
-        Ok(Value::Symbol(token.to_string()))
+        Ok(Value::Symbol {
+            symbol: Symbol::new(&token),
+            quoted,
+        })
     }
 }
 
