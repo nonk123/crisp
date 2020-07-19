@@ -117,7 +117,11 @@ impl BracketParser {
 impl Parser for BracketParser {
     fn has_next(&self, buffer: &String) -> ParserCheckResult {
         if buffer.len() < 2 {
-            return Err(ParserError::MalformedInput("Too short".to_string()));
+            return Err(ParserError::MalformedInput("Too short".into()));
+        }
+
+        if !['(', '['].contains(&buffer.chars().nth(0).unwrap()) {
+            return Err(ParserError::MalformedInput("Not a list".into()));
         }
 
         let mut matching: Vec<char> = Vec::new();

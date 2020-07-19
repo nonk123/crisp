@@ -1,7 +1,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::crisp::{eval, Closure, Environment, EvalError, EvalResult, Value};
+use crate::crisp::{Environment, EvalError, EvalResult, Value};
 
 fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
@@ -21,15 +21,6 @@ fn read_line() -> io::Result<String> {
 
 pub fn mainloop() -> io::Result<()> {
     let mut environment = Environment::new();
-
-    let top = environment.top_level();
-    top.put_str("answer", Value::Integer(42));
-    top.put_str("hmm?", Value::Integer(15663));
-
-    let mut bot = Closure::new();
-    bot.put_str("answer", Value::Integer(43));
-    bot.put_str("real-answer", Value::Integer(42));
-    environment.push_to_stack(bot);
 
     fn car(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
         if args.len() != 1 {
@@ -57,7 +48,7 @@ pub fn mainloop() -> io::Result<()> {
             return Ok(());
         }
 
-        match eval(&mut environment, input) {
+        match environment.eval(&input) {
             Ok(value) => println!("{:?}", value),
             Err(error) => println!("{:?}", error),
         }

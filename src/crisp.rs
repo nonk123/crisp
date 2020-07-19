@@ -129,6 +129,8 @@ impl Closure {
         self.0.insert(key, value);
     }
 
+    // Used in tests only.
+    #[allow(dead_code)]
     pub fn put_str(&mut self, key: &str, value: Value) {
         self.put(Symbol::from_str(key), value);
     }
@@ -147,11 +149,13 @@ impl Environment {
         }
     }
 
+    // Used in tests only.
+
+    #[allow(dead_code)]
     pub fn top_level(&mut self) -> &mut Closure {
         self.stack.first_mut().unwrap()
     }
 
-    // Will be used soon (tm).
     #[allow(dead_code)]
     pub fn current(&mut self) -> &mut Closure {
         self.stack.last_mut().unwrap()
@@ -207,10 +211,8 @@ impl Environment {
             Err(EvalError::FunctionDefinitionIsVoid(symbol.to_string()))
         }
     }
-}
 
-pub fn eval(environment: &mut Environment, buffer: String) -> EvalResult {
-    parse(&buffer)
-        .map_err(EvalError::FailedToParse)?
-        .eval(environment)
+    pub fn eval(&mut self, buffer: &String) -> EvalResult {
+        parse(buffer).map_err(EvalError::FailedToParse)?.eval(self)
+    }
 }
