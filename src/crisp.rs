@@ -10,6 +10,12 @@ impl Symbol {
         Self(string.to_string())
     }
 
+    // Used in `tests`.
+    #[allow(dead_code)]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
     pub fn to_string(&self) -> String {
         self.0.to_string()
     }
@@ -36,7 +42,7 @@ pub enum EvalError {
 
 pub type EvalResult = Result<Value, EvalError>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub enum Value {
     Nil,
     T,
@@ -44,6 +50,43 @@ pub enum Value {
     Symbol { symbol: Symbol, quoted: bool },
     Funcall(Symbol, Vec<Value>),
     List(Vec<Value>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Value::Nil => match other {
+                Value::Nil => true,
+                _ => false,
+            },
+            Value::T => match other {
+                Value::T => true,
+                _ => false,
+            },
+            Value::Integer(i) => match other {
+                Value::Integer(j) => i == j,
+                _ => false,
+            },
+            Value::Symbol {
+                symbol: s1,
+                quoted: q1,
+            } => match other {
+                Value::Symbol {
+                    symbol: s2,
+                    quoted: q2,
+                } => s1 == s2 && q1 == q2,
+                _ => false,
+            },
+            Value::Funcall(car, cdr) => match other {
+                Value::Funcall(fun, args) => car == fun && cdr == args,
+                _ => false,
+            },
+            Value::List(v1) => match other {
+                Value::List(v2) => v1 == v2,
+                _ => false,
+            },
+        }
+    }
 }
 
 impl Value {
@@ -108,6 +151,8 @@ impl Environment {
         self.stack.first_mut().unwrap()
     }
 
+    // Will be used soon (tm).
+    #[allow(dead_code)]
     pub fn current(&mut self) -> &mut Closure {
         self.stack.last_mut().unwrap()
     }
