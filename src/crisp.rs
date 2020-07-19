@@ -6,10 +6,6 @@ use std::collections::HashMap;
 pub struct Symbol(String);
 
 impl Symbol {
-    pub fn new(string: &String) -> Self {
-        Self(string.to_string())
-    }
-
     pub fn from_str(string: &str) -> Self {
         Self(string.to_string())
     }
@@ -25,8 +21,8 @@ impl PartialEq for Symbol {
     }
 }
 
-pub type CrispInteger = i32;
-pub type CrispFunction = fn(&mut Environment, Vec<Value>) -> EvalResult;
+pub type Integer = i32;
+pub type Function = fn(&mut Environment, Vec<Value>) -> EvalResult;
 
 pub type SymbolTable = HashMap<Symbol, Value>;
 
@@ -43,7 +39,8 @@ pub type EvalResult = Result<Value, EvalError>;
 #[derive(Debug, Clone)]
 pub enum Value {
     Nil,
-    Integer(CrispInteger),
+    T,
+    Integer(Integer),
     Symbol { symbol: Symbol, quoted: bool },
     Funcall(Symbol, Vec<Value>),
     List(Vec<Value>),
@@ -96,7 +93,7 @@ impl Closure {
 
 pub struct Environment {
     stack: Vec<Closure>,
-    functions_table: HashMap<Symbol, CrispFunction>,
+    functions_table: HashMap<Symbol, Function>,
 }
 
 impl Environment {
@@ -123,11 +120,15 @@ impl Environment {
         self.push_to_stack(Closure::new())
     }
 
-    pub fn add_function(&mut self, key: Symbol, function: CrispFunction) {
+    pub fn pop(&mut self) -> Option<Closure> {
+        self.stack.pop()
+    }
+
+    pub fn add_function(&mut self, key: Symbol, function: Function) {
         self.functions_table.insert(key, function);
     }
 
-    pub fn add_function_str(&mut self, key: &str, function: CrispFunction) {
+    pub fn add_function_str(&mut self, key: &str, function: Function) {
         self.add_function(Symbol::from_str(key), function);
     }
 
@@ -146,14 +147,17 @@ impl Environment {
         }
     }
 
-    pub fn function_lookup(&self, symbol: &Symbol) -> Option<CrispFunction> {
+    pub fn function_lookup(&self, symbol: &Symbol) -> Option<Function> {
         self.functions_table.get(symbol).cloned()
     }
 
     pub fn call(&mut self, symbol: &Symbol, args: Vec<Value>) -> EvalResult {
         if let Some(function) = self.function_lookup(symbol) {
             self.push_new();
-            function(self, args)
+            let value = function(self, args);
+            self.pop();
+
+            value
         } else {
             Err(EvalError::FunctionDefinitionIsVoid(symbol.to_string()))
         }

@@ -1,241 +1,231 @@
-use crate::crisp::{CrispInteger, Symbol, Value};
+use crate::crisp::{Integer, Symbol, Value};
+
+use regex::Regex;
+
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum ParserError {
-    MalformedSymbol(String),
-    MalformedInteger,
+    MalformedInput(String),
     IntegerOverflow,
+    UnmatchedParentheses,
+    EmptyFuncall,
+    InvalidFuncall,
     NoMatchingParser,
 }
 
+pub type ParserCheckResult = Result<(), ParserError>;
 pub type ParserResult = Result<Value, ParserError>;
 
 pub trait Parser {
-    fn can_parse(&self, buffer: &String) -> bool;
+    fn has_next(&self, buffer: &String) -> ParserCheckResult;
     fn parse(&self, buffer: &String) -> ParserResult;
 }
 
-struct IntegerParser;
+struct IntegerParser {
+    regex: Regex,
+}
 
 impl IntegerParser {
+    fn new() -> Self {
+        Self {
+            regex: Regex::new(r"(?P<sign>^\+|^-|^)(?P<number>[0-9]+)$").unwrap(),
+        }
+    }
+}
+
+impl Parser for IntegerParser {
+    fn has_next(&self, buffer: &String) -> ParserCheckResult {
+        if self.regex.is_match(buffer) {
+            Ok(())
+        } else {
+            Err(ParserError::MalformedInput(
+                "Regex doesn't match".to_string(),
+            ))
+        }
+    }
+
+    fn parse(&self, buffer: &String) -> ParserResult {
+        let captures = self.regex.captures(buffer).unwrap();
+
+        let sign: Integer = match captures.name("sign").unwrap().as_str() {
+            "-" => -1,
+            _ => 1,
+        };
+
+        let mut number: Integer = 0;
+
+        for character in captures.name("number").unwrap().as_str().chars() {
+            let digit = (character as u8 - b'0').into();
+
+            match number.checked_mul(10) {
+                Some(result) => match result.checked_add(digit) {
+                    Some(result) => number = result,
+                    None => return Err(ParserError::IntegerOverflow),
+                },
+                None => return Err(ParserError::IntegerOverflow),
+            }
+        }
+
+        Ok(Value::Integer(number * sign))
+    }
+}
+
+pub struct SymbolParser {
+    regex: Regex,
+}
+
+impl SymbolParser {
+    fn new() -> Self {
+        let re = r"^(?P<q>')?(?P<symbol>[a-zA-Z0-9!#-&*-/:-@^_`~|]+)$";
+
+        Self {
+            regex: Regex::new(re).unwrap(),
+        }
+    }
+}
+
+impl Parser for SymbolParser {
+    fn has_next(&self, buffer: &String) -> ParserCheckResult {
+        if self.regex.is_match(buffer) {
+            Ok(())
+        } else {
+            Err(ParserError::MalformedInput(
+                "Illegal characters in symbol name".to_string(),
+            ))
+        }
+    }
+
+    fn parse(&self, buffer: &String) -> ParserResult {
+        let captures = self.regex.captures(buffer).unwrap();
+
+        Ok(Value::Symbol {
+            symbol: Symbol::from_str(captures.name("symbol").unwrap().as_str()),
+            quoted: captures.name("q").is_some(),
+        })
+    }
+}
+
+struct BracketParser;
+
+impl BracketParser {
     fn new() -> Self {
         Self
     }
 }
 
-impl Parser for IntegerParser {
-    fn can_parse(&self, number: &String) -> bool {
-        let mut number = number.clone();
-
-        if [Some('-'), Some('+')].contains(&number.chars().nth(0)) {
-            number = number[1..].to_string();
-        }
-
-        if number.is_empty() {
-            return false;
-        }
-
-        for character in number.chars() {
-            if !('0'..='9').contains(&character) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn parse(&self, number: &String) -> ParserResult {
-        let mut number = number.clone();
-
-        let sign: CrispInteger = {
-            if number.chars().nth(0) == Some('-') {
-                number = number[1..].to_string();
-                -1
-            } else if number.chars().nth(0) == Some('+') {
-                number = number[1..].to_string();
-                1
-            } else {
-                1
-            }
-        };
-
-        let mut integer: CrispInteger = 0;
-
-        for character in number.chars() {
-            if ('0'..='9').contains(&character) {
-                let value: CrispInteger = (character as u8 - b'0').into();
-
-                // TODO: de-uglify.
-                match integer.checked_mul(10) {
-                    Some(result) => match result.checked_add(value) {
-                        Some(result) => integer = result,
-                        None => return Err(ParserError::IntegerOverflow),
-                    },
-                    None => return Err(ParserError::IntegerOverflow),
-                }
-            } else {
-                return Err(ParserError::MalformedInteger);
-            }
-        }
-
-        Ok(Value::Integer(integer * sign))
-    }
-}
-
-pub struct SymbolParser {
-    allowed_characters: Vec<char>,
-}
-
-impl SymbolParser {
-    fn new() -> Self {
-        let mut allowed_characters: Vec<char> = Vec::new();
-
-        let mut add_range = |begin: u8, end: u8| {
-            allowed_characters.append(&mut (begin..=end).map(char::from).collect());
-        };
-
-        add_range(b'a', b'z');
-        add_range(b'A', b'Z');
-
-        add_range(b'0', b'9');
-
-        add_range(b'!', b'&');
-        add_range(b'*', b'/');
-        add_range(b':', b'@');
-
-        allowed_characters.push('^');
-        allowed_characters.push('_');
-        allowed_characters.push('~');
-
-        Self { allowed_characters }
-    }
-}
-
-impl Parser for SymbolParser {
-    fn can_parse(&self, symbol: &String) -> bool {
-        !symbol.is_empty()
-    }
-
-    fn parse(&self, token: &String) -> ParserResult {
-        let mut token = token.clone();
-
-        let quoted = {
-            if token.chars().nth(0) == Some('\'') {
-                token = token[1..].to_string();
-                true
-            } else {
-                false
-            }
-        };
-
-        for character in token.chars() {
-            if !self.allowed_characters.contains(&character) {
-                return Err(ParserError::MalformedSymbol(format!(
-                    "Illegal character: ({})",
-                    character
-                )));
-            }
-        }
-
-        Ok(Value::Symbol {
-            symbol: Symbol::new(&token),
-            quoted,
-        })
-    }
-}
-
-struct BracketParser {
-    pairs: Vec<(char, char)>,
-}
-
-impl BracketParser {
-    fn new() -> Self {
-        Self {
-            pairs: vec![('(', ')'), ('[', ']')],
-        }
-    }
-
-    fn find_matching_bracket(&self, list: &String) -> char {
-        if let Some(opening) = list.chars().nth(0) {
-            for (left, right) in self.pairs.iter().cloned() {
-                if left == opening {
-                    return right;
-                }
-            }
-        }
-
-        return ' ';
-    }
-
-    fn get_opening(&self) -> Vec<char> {
-        self.pairs.iter().map(|pair| pair.0).collect()
-    }
-
-    fn get_closing(&self) -> Vec<char> {
-        self.pairs.iter().map(|pair| pair.1).collect()
-    }
-}
-
 impl Parser for BracketParser {
-    fn can_parse(&self, list: &String) -> bool {
-        for (left, right) in self.pairs.iter().cloned() {
-            if list.chars().nth(0) == Some(left) && list.chars().last() == Some(right) {
-                return true;
-            }
+    fn has_next(&self, buffer: &String) -> ParserCheckResult {
+        if buffer.len() < 2 {
+            return Err(ParserError::MalformedInput("Too short".to_string()));
         }
 
-        false
+        let mut matching: Vec<char> = Vec::new();
+
+        for character in buffer.chars() {
+            match character {
+                '(' => matching.push(')'),
+                '[' => matching.push(']'),
+                ')' | ']' => {
+                    if Some(character) != matching.pop() {
+                        return Err(ParserError::UnmatchedParentheses);
+                    }
+                }
+                _ => {}
+            };
+        }
+
+        if matching.is_empty() {
+            Ok(())
+        } else {
+            Err(ParserError::UnmatchedParentheses)
+        }
     }
 
-    fn parse(&self, list: &String) -> ParserResult {
-        let matching = self.find_matching_bracket(&list);
-
-        let list = list[1..].to_string();
+    fn parse(&self, buffer: &String) -> ParserResult {
+        let buffer = buffer[1..].to_string();
 
         let mut elements: Vec<Value> = Vec::new();
 
-        let mut depth = 0;
-
         let mut element = String::new();
 
-        for character in list.chars() {
-            if depth == 0 && [' ', '\t', matching].contains(&character) {
-                elements.push(parse(&element)?);
-                element = String::new();
+        for character in buffer.chars() {
+            if [' ', '\t', ')', ']'].contains(&character) {
+                match parse(&element) {
+                    Ok(value) => {
+                        elements.push(value);
+                        element = String::new();
+                    }
+                    Err(ParserError::NoMatchingParser) => element.push(character),
+                    Err(err) => return Err(err),
+                }
             } else {
                 element.push(character);
             }
-
-            if self.get_opening().contains(&character) {
-                depth += 1;
-            } else if self.get_closing().contains(&character) {
-                depth -= 1;
-            }
         }
 
-        if matching == ')' && !elements.is_empty() {
+        if buffer.chars().last() == Some(')') {
+            if elements.is_empty() {
+                return Err(ParserError::EmptyFuncall);
+            }
+
             if let Value::Symbol { symbol, quoted } = elements.first().unwrap() {
                 if !quoted {
                     let cdr = elements.iter().skip(1).cloned().collect();
                     return Ok(Value::Funcall(symbol.clone(), cdr));
                 }
             }
-        }
 
-        Ok(Value::List(elements))
+            Err(ParserError::InvalidFuncall)
+        } else {
+            Ok(Value::List(elements))
+        }
+    }
+}
+
+struct SpecialParser {
+    mappings: HashMap<&'static str, Value>,
+}
+
+impl SpecialParser {
+    fn new() -> Self {
+        let mut mappings: HashMap<&str, Value> = HashMap::new();
+
+        mappings.insert("t", Value::T);
+        mappings.insert("nil", Value::Nil);
+
+        Self { mappings }
+    }
+}
+
+impl Parser for SpecialParser {
+    fn has_next(&self, buffer: &String) -> ParserCheckResult {
+        if self.mappings.contains_key(buffer.as_str()) {
+            Ok(())
+        } else {
+            Err(ParserError::MalformedInput(
+                "Not a special token".to_string(),
+            ))
+        }
+    }
+
+    fn parse(&self, buffer: &String) -> ParserResult {
+        Ok(self.mappings.get(buffer.as_str()).unwrap().clone())
     }
 }
 
 pub fn parse(buffer: &String) -> ParserResult {
     let parsers: Vec<Box<dyn Parser>> = vec![
-        Box::new(BracketParser::new()),
         Box::new(IntegerParser::new()),
+        Box::new(SpecialParser::new()),
         Box::new(SymbolParser::new()),
+        Box::new(BracketParser::new()),
     ];
 
     for parser in parsers {
-        if parser.can_parse(&buffer) {
-            return parser.parse(buffer);
+        match parser.has_next(buffer) {
+            Ok(_) => return parser.parse(buffer),
+            Err(_) => {}
         }
     }
 
