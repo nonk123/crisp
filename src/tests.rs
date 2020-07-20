@@ -32,6 +32,44 @@ fn integer() {
 }
 
 #[test]
+fn string() {
+    assert_eq!(parse("\"meh\"").unwrap(), Value::String("meh".into()));
+    assert_eq!(
+        parse("\"Hello, World!\"").unwrap(),
+        Value::String("Hello, World!".into())
+    );
+
+    assert_eq!(
+        parse("[\"hello\" \"world\"]").unwrap(),
+        Value::List(vec![
+            Value::String("hello".into()),
+            Value::String("world".into()),
+        ])
+    );
+    assert_eq!(
+        parse("[\"hello world\" \"goodbye world\"]").unwrap(),
+        Value::List(vec![
+            Value::String("hello world".into()),
+            Value::String("goodbye world".into()),
+        ])
+    );
+
+    assert_eq!(parse("\"\\\\\"").unwrap(), Value::String("\\".into()));
+    assert_eq!(
+        parse("\"\\\"hello\\\"\"").unwrap(),
+        Value::String("\"hello\"".into())
+    );
+    assert_eq!(
+        parse("\"hello\\nworld\"").unwrap(),
+        Value::String("hello\nworld".into())
+    );
+
+    assert!(parse("\"hello").is_err());
+    assert!(parse("hello\"").is_err());
+    assert!(parse("\"hello\"\"").is_err());
+}
+
+#[test]
 fn symbol() {
     match parse("'hello").unwrap() {
         Value::Symbol { symbol, quoted } => {

@@ -47,6 +47,7 @@ pub enum Value {
     Nil,
     T,
     Integer(Integer),
+    String(String),
     Symbol { symbol: Symbol, quoted: bool },
     Funcall(Symbol, Vec<Value>),
     List(Vec<Value>),
@@ -65,6 +66,10 @@ impl PartialEq for Value {
             },
             Value::Integer(i) => match other {
                 Value::Integer(j) => i == j,
+                _ => false,
+            },
+            Value::String(s1) => match other {
+                Value::String(s2) => s1 == s2,
                 _ => false,
             },
             Value::Symbol {

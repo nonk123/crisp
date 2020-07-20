@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub enum ParserError {
     MalformedInput(String),
     IntegerOverflow,
+    InvalidEscapeSequence(char),
     UnmatchedParentheses,
     EmptyFuncall,
     InvalidFuncall,
@@ -218,10 +219,75 @@ impl Parser for SpecialParser {
     }
 }
 
+struct StringParser;
+
+impl StringParser {
+    fn new() -> Self {
+        Self
+    }
+}
+
+impl Parser for StringParser {
+    fn has_next(&self, buffer: &String) -> ParserCheckResult {
+        if buffer.len() >= 2
+            && buffer.chars().nth(0) == Some('"')
+            && buffer.chars().last() == Some('"')
+        {
+            Ok(())
+        } else {
+            Err(ParserError::MalformedInput(
+                "Must be enclosed in double quotes".into(),
+            ))
+        }
+    }
+
+    fn parse(&self, buffer: &String) -> ParserResult {
+        let mut escape_sequences: HashMap<char, char> = HashMap::new();
+
+        escape_sequences.insert('"', '"');
+        escape_sequences.insert('n', '\n');
+        escape_sequences.insert('t', '\t');
+        escape_sequences.insert('\\', '\\');
+
+        let mut escaping = false;
+        let mut string = String::new();
+
+        for (index, character) in buffer[1..].chars().enumerate() {
+            if escaping {
+                if let Some(result) = escape_sequences.get(&character) {
+                    string.push(*result);
+                    escaping = false;
+                } else {
+                    return Err(ParserError::InvalidEscapeSequence(character));
+                }
+            } else if character == '\\' {
+                escaping = true;
+            } else if character == '"' {
+                // One off because of `buffer[1..]`.
+                if index == buffer.len() - 2 {
+                    return Ok(Value::String(string));
+                } else {
+                    return Err(ParserError::MalformedInput(
+                        "String literal closed early".into(),
+                    ));
+                }
+            } else {
+                string.push(character);
+            }
+        }
+
+        // Never reached due to conditions in `.has_next()`.
+        Err(ParserError::MalformedInput(
+            "Reached the end of string literal".into(),
+        ))
+    }
+}
+
 pub fn parse(buffer: &String) -> ParserResult {
     let parsers: Vec<Box<dyn Parser>> = vec![
         Box::new(IntegerParser::new()),
         Box::new(SpecialParser::new()),
+        Box::new(StringParser::new()),
         Box::new(SymbolParser::new()),
         Box::new(BracketParser::new()),
     ];
