@@ -1,6 +1,9 @@
 use crate::crisp::{Environment, EvalError, EvalResult, Integer, Value};
 
 pub fn configure(environment: &mut Environment) {
+    environment.add_function_str("progn", progn);
+    environment.add_function_str("debug", debug);
+
     environment.add_function_str("+", add);
     environment.add_function_str("-", sub);
     environment.add_function_str("*", mul);
@@ -43,6 +46,22 @@ fn some_args(args: Vec<Value>) -> Result<Vec<Value>, EvalError> {
     } else {
         Ok(args)
     }
+}
+
+fn progn(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    for arg in args[..args.len() - 1].iter() {
+        arg.eval(environment)?;
+    }
+
+    args.last().unwrap_or(&Value::Nil).eval(environment)
+}
+
+fn debug(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    for arg in args {
+        println!("{:?}", arg.eval(environment)?);
+    }
+
+    Ok(Value::Nil)
 }
 
 fn add(environment: &mut Environment, args: Vec<Value>) -> EvalResult {

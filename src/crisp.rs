@@ -1,6 +1,7 @@
 use crate::parsers::{parse, ParserError};
 
 use std::collections::HashMap;
+use std::io::Read;
 
 #[derive(Debug, Clone, Eq, Hash)]
 pub struct Symbol(String);
@@ -38,6 +39,7 @@ pub enum EvalError {
     VariableIsVoid(String),
     FunctionDefinitionIsVoid(String),
     FailedToParse(ParserError),
+    FailedToReadFile(String, std::io::Error),
 }
 
 pub type EvalResult = Result<Value, EvalError>;
@@ -225,6 +227,23 @@ impl Environment {
 
     pub fn eval(&mut self, buffer: &String) -> EvalResult {
         parse(buffer).map_err(EvalError::FailedToParse)?.eval(self)
+    }
+
+    pub fn eval_stdin(&mut self) -> EvalResult {
+        let mut buffer = String::new();
+
+        if let Err(err) = std::io::stdin().read_to_string(&mut buffer) {
+            return Err(EvalError::FailedToReadFile("stdin".into(), err));
+        }
+
+        self.eval(&format!("(progn {})", buffer))
+    }
+
+    pub fn eval_file(&mut self, name: String) -> EvalResult {
+        match std::fs::read_to_string(&name) {
+            Ok(buffer) => self.eval(&format!("(progn {})", buffer)),
+            Err(err) => Err(EvalError::FailedToReadFile(name, err)),
+        }
     }
 
     // Used in `tests`.

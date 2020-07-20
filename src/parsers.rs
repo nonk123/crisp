@@ -155,7 +155,12 @@ impl Parser for BracketParser {
         let mut element = String::new();
 
         for character in buffer.chars() {
-            if [' ', '\t', ')', ']'].contains(&character) {
+            if [' ', '\t', '\n', '\r', ')', ']'].contains(&character) {
+                // Skip random whitespaces.
+                if element.is_empty() {
+                    continue;
+                }
+
                 match parse(&element) {
                     Ok(value) => {
                         elements.push(value);

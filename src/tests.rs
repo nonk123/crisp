@@ -146,4 +146,7 @@ fn funcall() {
             Value::String("bar".into())
         ])
     );
+
+    assert_eq!(eval("(progn 1 2 3 4 5)"), Value::Integer(5));
+    assert_eq!(eval("(progn (+ 1 2 3) (- 1 2 3))"), Value::Integer(-4));
 }
