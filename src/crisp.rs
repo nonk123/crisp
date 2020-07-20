@@ -174,6 +174,11 @@ impl Environment {
         self.stack.last_mut().unwrap()
     }
 
+    pub fn outer(&mut self) -> &mut Closure {
+        let index = self.stack.len() - 2;
+        self.stack.get_mut(index).unwrap()
+    }
+
     pub fn push_to_stack(&mut self, closure: Closure) {
         self.stack.push(closure);
     }
@@ -195,18 +200,23 @@ impl Environment {
     }
 
     pub fn lookup(&self, symbol: &Symbol) -> Option<Value> {
-        let mut stack = self.stack.clone();
-
-        loop {
-            match stack.pop() {
-                Some(closure) => {
-                    if let Some(value) = closure.0.get(symbol) {
-                        return Some(value.clone());
-                    }
-                }
-                None => return None,
+        for frame in self.stack.iter().rev() {
+            if let Some(value) = frame.0.get(symbol) {
+                return Some(value.clone());
             }
         }
+
+        None
+    }
+
+    pub fn find_closure(&mut self, symbol: &Symbol) -> Option<&mut Closure> {
+        for frame in self.stack.iter_mut().rev() {
+            if frame.0.contains_key(symbol) {
+                return Some(frame);
+            }
+        }
+
+        None
     }
 
     pub fn function_lookup(&self, symbol: &Symbol) -> Option<Function> {

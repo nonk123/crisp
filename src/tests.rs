@@ -149,4 +149,19 @@ fn funcall() {
 
     assert_eq!(eval("(progn 1 2 3 4 5)"), Value::Integer(5));
     assert_eq!(eval("(progn (+ 1 2 3) (- 1 2 3))"), Value::Integer(-4));
+
+    assert_eq!(eval("(if t 1 0)"), Value::Integer(1));
+    assert_eq!(eval("(if nil 100)"), Value::Nil);
+    assert_eq!(eval("(when nil 100)"), Value::Nil);
+    assert_eq!(eval("(when t 100)"), Value::Integer(100));
+}
+
+#[test]
+fn factorial() {
+    assert_eq!(
+        Environment::new_configured()
+            .eval_file("std/factorial.cr".into())
+            .unwrap(),
+        Value::Integer(120)
+    );
 }
