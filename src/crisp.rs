@@ -29,9 +29,100 @@ impl PartialEq for Symbol {
 }
 
 pub type Integer = i32;
-pub type Function = fn(&mut Environment, Vec<Value>) -> EvalResult;
 
-pub type SymbolTable = HashMap<Symbol, Value>;
+#[derive(Clone)]
+pub struct ArgDescriptor {
+    name: Symbol,
+    eval: bool,
+    rest: bool,
+}
+
+impl ArgDescriptor {
+    pub fn new(name: Symbol, eval: bool, rest: bool) -> Self {
+        Self { name, eval, rest }
+    }
+}
+
+type Builtin = fn(&mut Environment, Vec<Value>) -> EvalResult;
+
+#[derive(Clone)]
+pub struct Defun {
+    body: Value,
+    takes: Vec<ArgDescriptor>,
+}
+
+#[derive(Clone)]
+pub enum Function {
+    Builtin(Builtin),
+    Defun(Defun),
+}
+
+impl Function {
+    pub fn new_defun(body: Value, takes: Vec<ArgDescriptor>) -> Self {
+        Self::Defun(Defun { body, takes })
+    }
+
+    pub fn new_builtin(function: Builtin) -> Self {
+        Self::Builtin(function)
+    }
+
+    fn eval_defun(
+        &self,
+        environment: &mut Environment,
+        defun: &Defun,
+        mut args: Vec<Value>,
+    ) -> EvalResult {
+        for descriptor in defun.takes.iter() {
+            if descriptor.rest {
+                let value = {
+                    let list = Value::List(args);
+
+                    if descriptor.eval {
+                        list.eval(environment)?
+                    } else {
+                        list
+                    }
+                };
+
+                environment.current().put(descriptor.name.clone(), value);
+
+                break;
+            } else {
+                let value = {
+                    let arg = match args.get(0) {
+                        Some(_) => args.remove(0),
+                        None => return Err(EvalError::ArgsMismatch),
+                    };
+
+                    if descriptor.eval {
+                        arg.eval(environment)?
+                    } else {
+                        arg.clone()
+                    }
+                };
+
+                environment.current().put(descriptor.name.clone(), value);
+            }
+        }
+
+        let result = defun.body.eval(environment);
+
+        result
+    }
+
+    pub fn call(&self, environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+        environment.push_new();
+
+        let result = match self {
+            Self::Builtin(function) => function(environment, args),
+            Self::Defun(defun) => self.eval_defun(environment, defun, args),
+        };
+
+        environment.pop();
+
+        result
+    }
+}
 
 #[derive(Debug)]
 pub enum EvalError {
@@ -125,7 +216,7 @@ impl Value {
 }
 
 #[derive(Debug, Clone)]
-pub struct Closure(SymbolTable);
+pub struct Closure(HashMap<Symbol, Value>);
 
 impl Closure {
     pub fn new() -> Self {
@@ -174,11 +265,6 @@ impl Environment {
         self.stack.last_mut().unwrap()
     }
 
-    pub fn outer(&mut self) -> &mut Closure {
-        let index = self.stack.len() - 2;
-        self.stack.get_mut(index).unwrap()
-    }
-
     pub fn push_to_stack(&mut self, closure: Closure) {
         self.stack.push(closure);
     }
@@ -193,10 +279,6 @@ impl Environment {
 
     pub fn add_function(&mut self, key: Symbol, function: Function) {
         self.functions_table.insert(key, function);
-    }
-
-    pub fn add_function_str(&mut self, key: &str, function: Function) {
-        self.add_function(Symbol::from_str(key), function);
     }
 
     pub fn lookup(&self, symbol: &Symbol) -> Option<Value> {
@@ -219,20 +301,17 @@ impl Environment {
         None
     }
 
-    pub fn function_lookup(&self, symbol: &Symbol) -> Option<Function> {
-        self.functions_table.get(symbol).cloned()
-    }
-
     pub fn call(&mut self, symbol: &Symbol, args: Vec<Value>) -> EvalResult {
-        if let Some(function) = self.function_lookup(symbol) {
-            self.push_new();
-            let value = function(self, args);
-            self.pop();
+        self.push_new();
 
-            value
-        } else {
-            Err(EvalError::FunctionDefinitionIsVoid(symbol.to_string()))
-        }
+        let result = match self.functions_table.get(symbol).cloned() {
+            Some(function) => function.call(self, args),
+            None => Err(EvalError::FunctionDefinitionIsVoid(symbol.to_string())),
+        };
+
+        self.pop();
+
+        result
     }
 
     pub fn eval(&mut self, buffer: &String) -> EvalResult {

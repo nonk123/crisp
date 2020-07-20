@@ -1,4 +1,4 @@
-(let 'result 1)
+(set 'result 1)
 
 (while (/= input 0)
   (set 'result (* result input))

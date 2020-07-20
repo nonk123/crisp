@@ -1,27 +1,29 @@
-use crate::crisp::{Environment, EvalError, EvalResult, Integer, Symbol, Value};
+use crate::crisp::{
+    ArgDescriptor, Environment, EvalError, EvalResult, Function, Integer, Symbol, Value,
+};
 
 pub fn configure(environment: &mut Environment) {
-    environment.add_function_str("progn", progn);
-    environment.add_function_str("debug", debug);
+    let functions: Vec<(&str, fn(&mut Environment, Vec<Value>) -> EvalResult)> = vec![
+        ("progn", progn),
+        ("debug", debug),
+        ("if", if_),
+        ("when", when),
+        ("while", while_),
+        ("set", set),
+        ("=", eq),
+        ("/=", neq),
+        ("+", add),
+        ("-", sub),
+        ("*", mul),
+        ("/", div),
+        ("car", car),
+        ("cdr", cdr),
+        ("defun", defun),
+    ];
 
-    environment.add_function_str("if", if_);
-    environment.add_function_str("when", when);
-
-    environment.add_function_str("while", while_);
-
-    environment.add_function_str("let", let_);
-    environment.add_function_str("set", set);
-
-    environment.add_function_str("=", eq);
-    environment.add_function_str("/=", neq);
-
-    environment.add_function_str("+", add);
-    environment.add_function_str("-", sub);
-    environment.add_function_str("*", mul);
-    environment.add_function_str("/", div);
-
-    environment.add_function_str("car", car);
-    environment.add_function_str("cdr", cdr);
+    for (name, function) in functions {
+        environment.add_function(Symbol::from_str(name), Function::new_builtin(function));
+    }
 }
 
 fn list_arg(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
@@ -191,12 +193,6 @@ fn symbol_binding_argslist(
     )
 }
 
-fn let_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-    let (symbol, value) = symbol_binding_argslist(environment, args)?;
-    environment.outer().put(symbol, value.clone());
-    Ok(value)
-}
-
 fn set(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     let (symbol, value) = symbol_binding_argslist(environment, args)?;
 
@@ -294,4 +290,37 @@ fn cdr(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
         }
         _ => Err(EvalError::ArgsMismatch),
     }
+}
+
+fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    if args.len() < 2 {
+        return Err(EvalError::ArgsMismatch);
+    }
+
+    let name = match args.first().unwrap() {
+        Value::Symbol { symbol, quoted: _ } => symbol,
+        _ => return Err(EvalError::ArgsMismatch),
+    };
+
+    let body = make_progn(args[2..].to_vec());
+
+    let mut takes: Vec<ArgDescriptor> = Vec::new();
+
+    let args_list = match args.get(1).unwrap() {
+        Value::List(args) => args,
+        _ => return Err(EvalError::ArgsMismatch),
+    };
+
+    for arg in args_list.iter() {
+        match arg {
+            Value::Symbol { symbol, quoted } => {
+                takes.push(ArgDescriptor::new(symbol.clone(), !quoted, false))
+            }
+            _ => return Err(EvalError::ArgsMismatch),
+        }
+    }
+
+    environment.add_function(name.clone(), Function::new_defun(body, takes));
+
+    Ok(Value::Nil)
 }
