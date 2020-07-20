@@ -99,7 +99,7 @@ impl PartialEq for Value {
 impl Value {
     pub fn eval(&self, environment: &mut Environment) -> EvalResult {
         match self {
-            Value::Symbol { symbol, quoted } => {
+            Self::Symbol { symbol, quoted } => {
                 if *quoted {
                     Ok(self.clone())
                 } else {
@@ -109,15 +109,15 @@ impl Value {
                     }
                 }
             }
-            Value::Funcall(symbol, args) => environment.call(symbol, args.to_vec()),
-            Value::List(elements) => {
-                let mut evaluated: Vec<Value> = Vec::new();
+            Self::Funcall(symbol, args) => environment.call(symbol, args.to_vec()),
+            Self::List(elements) => {
+                let mut evaluated: Vec<Self> = Vec::new();
 
                 for element in elements.iter() {
                     evaluated.push(element.eval(environment)?);
                 }
 
-                Ok(Value::List(evaluated))
+                Ok(Self::List(evaluated))
             }
             _ => Ok(self.to_owned()),
         }

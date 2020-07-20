@@ -1,9 +1,8 @@
 (let 'result 1)
-(let 'input [1 2 3 4 5])
 
-(while input
-  (set 'result (* result (car input)))
-  (set 'input (cdr input)))
+(while (/= input 0)
+  (set 'result (* result input))
+  (set 'input (- input 1)))
 
 (debug result)
 result

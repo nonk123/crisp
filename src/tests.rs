@@ -158,10 +158,21 @@ fn funcall() {
 
 #[test]
 fn factorial() {
+    let mut environment = Environment::new_configured();
+
+    let input = 5;
+    let mut result = 1;
+
+    for i in 1..=input {
+        result *= i;
+    }
+
+    environment
+        .top_level()
+        .put_str("input", Value::Integer(input));
+
     assert_eq!(
-        Environment::new_configured()
-            .eval_file("std/factorial.cr".into())
-            .unwrap(),
-        Value::Integer(120)
+        environment.eval_file("std/factorial.cr".into()).unwrap(),
+        Value::Integer(result)
     );
 }

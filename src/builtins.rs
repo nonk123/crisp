@@ -12,6 +12,9 @@ pub fn configure(environment: &mut Environment) {
     environment.add_function_str("let", let_);
     environment.add_function_str("set", set);
 
+    environment.add_function_str("=", eq);
+    environment.add_function_str("/=", neq);
+
     environment.add_function_str("+", add);
     environment.add_function_str("-", sub);
     environment.add_function_str("*", mul);
@@ -34,38 +37,42 @@ fn list_arg(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     }
 }
 
-fn reduce<F: Fn(Integer, Integer) -> Integer>(
+fn reduce<T, C: Fn(Value) -> Option<T>, R: Fn(T, T) -> T>(
     environment: &mut Environment,
-    mut starting: Integer,
+    starting: Value,
     args: Vec<Value>,
-    operation: F,
-) -> EvalResult {
+    conversion: C,
+    operation: R,
+) -> Result<T, EvalError> {
+    let mut starting = match conversion(starting.eval(environment)?) {
+        Some(some) => some,
+        None => return Err(EvalError::ArgsMismatch),
+    };
+
     for value in args.iter() {
-        match value.eval(environment)? {
-            Value::Integer(i) => starting = operation(starting, i),
-            _ => return Err(EvalError::ArgsMismatch),
+        match conversion(value.eval(environment)?) {
+            Some(converted) => starting = operation(starting, converted),
+            None => return Err(EvalError::ArgsMismatch),
         }
     }
 
-    Ok(Value::Integer(starting))
+    Ok(starting)
 }
 
-fn reduce_car_cdr<F: Fn(Integer, Integer) -> Integer>(
+fn reduce_car_cdr<T, C: Fn(Value) -> Option<T>, R: Fn(T, T) -> T>(
     environment: &mut Environment,
     args: Vec<Value>,
-    operation: F,
-) -> EvalResult {
+    conversion: C,
+    operation: R,
+) -> Result<T, EvalError> {
     let car = match args.first() {
-        Some(value) => match value {
-            Value::Integer(i) => i,
-            _ => return Err(EvalError::ArgsMismatch),
-        },
+        Some(value) => value,
         None => return Err(EvalError::ArgsMismatch),
     };
 
     let cdr = args[1..].to_vec();
 
-    reduce(environment, *car, cdr, operation)
+    reduce(environment, car.clone(), cdr, conversion, operation)
 }
 
 fn make_progn(args: Vec<Value>) -> Value {
@@ -202,8 +209,40 @@ fn set(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     Ok(value)
 }
 
+fn eq(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    reduce_car_cdr(
+        environment,
+        args,
+        |x| Some(x),
+        |x, y| match x == y {
+            true => Value::T,
+            false => Value::Nil,
+        },
+    )
+}
+
+fn neq(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    match eq(environment, args)? {
+        Value::T => Ok(Value::Nil),
+        _ => Ok(Value::T),
+    }
+}
+
+fn to_integer(value: Value) -> Option<Integer> {
+    match value {
+        Value::Integer(i) => Some(i),
+        _ => None,
+    }
+}
+
 fn add(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-    reduce(environment, 0, some_args(args)?, |x, y| x + y)
+    Ok(Value::Integer(reduce(
+        environment,
+        Value::Integer(0),
+        some_args(args)?,
+        to_integer,
+        |x, y| x + y,
+    )?))
 }
 
 fn sub(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
@@ -213,16 +252,32 @@ fn sub(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
             _ => Err(EvalError::ArgsMismatch),
         }
     } else {
-        reduce_car_cdr(environment, args, |x, y| x - y)
+        Ok(Value::Integer(reduce_car_cdr(
+            environment,
+            args,
+            to_integer,
+            |x, y| x - y,
+        )?))
     }
 }
 
 fn mul(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-    reduce(environment, 1, some_args(args)?, |x, y| x * y)
+    Ok(Value::Integer(reduce(
+        environment,
+        Value::Integer(1),
+        some_args(args)?,
+        to_integer,
+        |x, y| x * y,
+    )?))
 }
 
 fn div(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-    reduce_car_cdr(environment, args, |x, y| x / y)
+    Ok(Value::Integer(reduce_car_cdr(
+        environment,
+        args,
+        to_integer,
+        |x, y| x / y,
+    )?))
 }
 
 fn car(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
