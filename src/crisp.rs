@@ -154,6 +154,12 @@ impl Environment {
         }
     }
 
+    pub fn new_configured() -> Self {
+        let mut environment = Self::new();
+        crate::builtins::configure(&mut environment);
+        environment
+    }
+
     // Used in tests only.
 
     #[allow(dead_code)]
@@ -219,5 +225,11 @@ impl Environment {
 
     pub fn eval(&mut self, buffer: &String) -> EvalResult {
         parse(buffer).map_err(EvalError::FailedToParse)?.eval(self)
+    }
+
+    // Used in `tests`.
+    #[allow(dead_code)]
+    pub fn eval_str(&mut self, buffer: &str) -> EvalResult {
+        self.eval(&buffer.into())
     }
 }

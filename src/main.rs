@@ -1,3 +1,4 @@
+mod builtins;
 mod crisp;
 mod parsers;
 mod repl;

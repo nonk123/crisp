@@ -1,7 +1,7 @@
 use std::io;
 use std::io::Write;
 
-use crate::crisp::{Environment, EvalError, EvalResult, Value};
+use crate::crisp::Environment;
 
 fn read_line() -> io::Result<String> {
     let mut buffer = String::new();
@@ -20,22 +20,7 @@ fn read_line() -> io::Result<String> {
 }
 
 pub fn mainloop() -> io::Result<()> {
-    let mut environment = Environment::new();
-
-    fn car(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-        if args.len() != 1 {
-            Err(EvalError::ArgsMismatch)
-        } else {
-            let arg = args.first().unwrap().eval(environment)?;
-
-            match arg {
-                Value::List(elements) => elements.first().unwrap_or(&Value::Nil).eval(environment),
-                _ => Err(EvalError::ArgsMismatch),
-            }
-        }
-    }
-
-    environment.add_function_str("car", car);
+    let mut environment = Environment::new_configured();
 
     loop {
         print!("> ");

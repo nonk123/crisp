@@ -85,7 +85,7 @@ fn symbol() {
     assert!(parse("'with-a space").is_err());
     assert!(parse("'a 'b").is_err());
 
-    let mut environment = Environment::new();
+    let mut environment = Environment::new_configured();
     let value = Value::Integer(42);
 
     environment.top_level().put_str("the-answer", value.clone());
@@ -100,8 +100,6 @@ fn symbol() {
     );
 }
 
-// TODO: test functions.
-
 #[test]
 fn list() {
     assert_eq!(
@@ -114,6 +112,38 @@ fn list() {
         Value::List(vec![
             Value::List(vec![Value::T, Value::T]),
             Value::List(vec![Value::Nil, Value::Nil])
+        ])
+    );
+}
+
+#[test]
+fn funcall() {
+    let eval = |buffer| Environment::new_configured().eval_str(buffer).unwrap();
+
+    assert_eq!(eval("(+ 1 2 3)"), Value::Integer(6));
+    assert_eq!(eval("(+ 10 -5)"), Value::Integer(5));
+    assert_eq!(eval("(- 10)"), Value::Integer(-10));
+    assert_eq!(eval("(* 2 -2)"), Value::Integer(-4));
+    assert_eq!(eval("(/ 10 2)"), Value::Integer(5));
+
+    assert_eq!(
+        eval("(car ['a 'b 'c 10 -10 \"meh\"])"),
+        Value::Symbol {
+            symbol: Symbol::from_str("a"),
+            quoted: true
+        }
+    );
+
+    assert_eq!(
+        eval("(car [[10 20] [30 40]])"),
+        Value::List(vec![Value::Integer(10), Value::Integer(20)])
+    );
+
+    assert_eq!(
+        eval("(cdr ['hello-world \"foo\" \"bar\"])"),
+        Value::List(vec![
+            Value::String("foo".into()),
+            Value::String("bar".into())
         ])
     );
 }
