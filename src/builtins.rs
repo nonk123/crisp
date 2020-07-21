@@ -1,6 +1,4 @@
-use crate::crisp::{
-    ArgDescriptor, Environment, EvalError, EvalResult, Function, Integer, Symbol, Value,
-};
+use crate::crisp::{Environment, EvalError, EvalResult, Function, Integer, Symbol, Value};
 
 pub fn configure(environment: &mut Environment) {
     let functions: Vec<(&str, fn(&mut Environment, Vec<Value>) -> EvalResult)> = vec![
@@ -166,10 +164,7 @@ fn symbol_binding(
     value: Value,
 ) -> Result<(Symbol, Value), EvalError> {
     match symbol.eval(environment)? {
-        Value::Symbol { symbol, quote: _ } => {
-            let value = value.eval(environment)?;
-            Ok((symbol, value))
-        }
+        Value::Symbol(symbol) => Ok((symbol, value.eval(environment)?)),
         _ => Err(EvalError::ArgsMismatch),
     }
 }
@@ -300,13 +295,13 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     }
 
     let name = match args.first().unwrap() {
-        Value::Symbol { symbol, quote: _ } => symbol,
+        Value::Symbol(symbol) => symbol,
         _ => return Err(EvalError::ArgsMismatch),
     };
 
     let body = make_progn(args[2..].to_vec());
 
-    let mut takes: Vec<ArgDescriptor> = Vec::new();
+    let mut takes: Vec<Symbol> = Vec::new();
 
     let args_list = match args.get(1).unwrap() {
         Value::List(args) => args,
@@ -315,8 +310,17 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 
     for arg in args_list.iter() {
         match arg {
-            Value::Symbol { symbol, quote } => {
-                takes.push(ArgDescriptor::new(symbol.clone(), quote.clone(), false))
+            Value::Symbol(symbol) => {
+                match takes.last() {
+                    Some(next) => {
+                        if symbol.rest && next.rest {
+                            return Err(EvalError::ArgsMismatch);
+                        }
+                    }
+                    _ => {}
+                }
+
+                takes.push(symbol.clone());
             }
             _ => return Err(EvalError::ArgsMismatch),
         }

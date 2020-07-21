@@ -78,7 +78,7 @@ pub struct SymbolParser {
 
 impl SymbolParser {
     fn new() -> Self {
-        let re = r"^(?P<q>[',])?(?P<symbol>[a-zA-Z0-9!#-&*-/:-@^_`~|]+)$";
+        let re = r"^(?P<q>[',])?(?P<symbol>[a-zA-Z0-9!#-&*+\-/:-@^_`~|]+)(?P<r>\.\.\.)?$";
 
         Self {
             regex: Regex::new(re).unwrap(),
@@ -100,9 +100,9 @@ impl Parser for SymbolParser {
     fn parse(&self, buffer: &String) -> ParserResult {
         let captures = self.regex.captures(buffer).unwrap();
 
-        Ok(Value::Symbol {
-            symbol: Symbol::from_str(captures.name("symbol").unwrap().as_str()),
-            quote: match captures.name("q") {
+        Ok(Value::Symbol(Symbol::new(
+            captures.name("symbol").unwrap().as_str().to_owned(),
+            match captures.name("q") {
                 Some(capture) => match capture.as_str() {
                     "'" => Quote::Single,
                     "," => Quote::Eval,
@@ -110,7 +110,8 @@ impl Parser for SymbolParser {
                 },
                 None => Quote::None,
             },
-        })
+            captures.name("r").is_some(),
+        )))
     }
 }
 
@@ -186,8 +187,8 @@ impl Parser for BracketParser {
                 return Err(ParserError::EmptyFuncall);
             }
 
-            if let Value::Symbol { symbol, quote } = elements.first().unwrap() {
-                match quote {
+            if let Value::Symbol(symbol) = elements.first().unwrap() {
+                match symbol.quote {
                     Quote::None => {
                         let cdr = elements.iter().skip(1).cloned().collect();
                         return Ok(Value::Funcall(symbol.clone(), cdr));

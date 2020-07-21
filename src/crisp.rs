@@ -4,51 +4,46 @@ use std::collections::HashMap;
 use std::io::Read;
 
 #[derive(Debug, Clone, Eq, Hash)]
-pub struct Symbol(String);
+pub struct Symbol {
+    pub name: String,
+    pub quote: Quote,
+    pub rest: bool,
+}
 
 impl Symbol {
-    pub fn from_str(string: &str) -> Self {
-        Self(string.to_string())
+    pub fn new(name: String, quote: Quote, rest: bool) -> Self {
+        Self { name, quote, rest }
+    }
+
+    pub fn from_str(name: &str) -> Self {
+        Self::new(name.to_string(), Quote::None, false)
     }
 
     // Used in `tests`.
     #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
-        self.0.as_str()
+        self.name.as_str()
     }
 
     pub fn to_string(&self) -> String {
-        self.0.to_string()
+        self.name.to_string()
     }
 }
 
 impl PartialEq for Symbol {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
+        self.name == other.name && self.quote == other.quote && self.rest == other.rest
     }
 }
 
 pub type Integer = i32;
-
-#[derive(Clone)]
-pub struct ArgDescriptor {
-    name: Symbol,
-    quote: Quote,
-    rest: bool,
-}
-
-impl ArgDescriptor {
-    pub fn new(name: Symbol, quote: Quote, rest: bool) -> Self {
-        Self { name, quote, rest }
-    }
-}
 
 type Builtin = fn(&mut Environment, Vec<Value>) -> EvalResult;
 
 #[derive(Clone)]
 pub struct Defun {
     body: Value,
-    takes: Vec<ArgDescriptor>,
+    takes: Vec<Symbol>,
 }
 
 #[derive(Clone)]
@@ -58,7 +53,7 @@ pub enum Function {
 }
 
 impl Function {
-    pub fn new_defun(body: Value, takes: Vec<ArgDescriptor>) -> Self {
+    pub fn new_defun(body: Value, takes: Vec<Symbol>) -> Self {
         Self::Defun(Defun { body, takes })
     }
 
@@ -72,18 +67,18 @@ impl Function {
         defun: &Defun,
         mut args: Vec<Value>,
     ) -> EvalResult {
-        for descriptor in defun.takes.iter() {
-            if descriptor.rest {
+        for symbol in defun.takes.iter() {
+            if symbol.rest {
                 let value = {
                     let list = Value::List(args);
 
-                    match descriptor.quote {
+                    match symbol.quote {
                         Quote::Single => list,
                         _ => list.eval(environment)?,
                     }
                 };
 
-                environment.current().put(descriptor.name.clone(), value);
+                environment.current().put(symbol.clone(), value);
 
                 break;
             } else {
@@ -93,13 +88,13 @@ impl Function {
                         None => return Err(EvalError::ArgsMismatch),
                     };
 
-                    match descriptor.quote {
+                    match symbol.quote {
                         Quote::Single => arg.clone(),
                         _ => arg.eval(environment)?,
                     }
                 };
 
-                environment.current().put(descriptor.name.clone(), value);
+                environment.current().put(symbol.clone(), value);
             }
         }
 
@@ -134,7 +129,7 @@ pub enum EvalError {
 
 pub type EvalResult = Result<Value, EvalError>;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Quote {
     None,
     Single,
@@ -147,7 +142,7 @@ pub enum Value {
     T,
     Integer(Integer),
     String(String),
-    Symbol { symbol: Symbol, quote: Quote },
+    Symbol(Symbol),
     Funcall(Symbol, Vec<Value>),
     List(Vec<Value>),
 }
@@ -171,14 +166,8 @@ impl PartialEq for Value {
                 Value::String(s2) => s1 == s2,
                 _ => false,
             },
-            Value::Symbol {
-                symbol: s1,
-                quote: q1,
-            } => match other {
-                Value::Symbol {
-                    symbol: s2,
-                    quote: q2,
-                } => s1 == s2 && q1 == q2,
+            Value::Symbol(s1) => match other {
+                Value::Symbol(s2) => s1 == s2,
                 _ => false,
             },
             Value::Funcall(car, cdr) => match other {
@@ -196,10 +185,10 @@ impl PartialEq for Value {
 impl Value {
     pub fn eval(&self, environment: &mut Environment) -> EvalResult {
         match self {
-            Self::Symbol { symbol, quote } => match quote {
+            Self::Symbol(symbol) => match symbol.quote {
                 Quote::Single => Ok(self.clone()),
                 _ => match environment.lookup(&symbol) {
-                    Some(value) => match quote {
+                    Some(value) => match symbol.quote {
                         Quote::None => Ok(value),
                         Quote::Eval => value.eval(environment),
                         _ => Err(EvalError::SomethingWentWrong),
@@ -223,21 +212,34 @@ impl Value {
 }
 
 #[derive(Debug, Clone)]
-pub struct Closure(HashMap<Symbol, Value>);
+pub struct Closure(HashMap<String, Value>);
 
 impl Closure {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
 
-    pub fn put(&mut self, key: Symbol, value: Value) {
-        self.0.insert(key, value);
+    pub fn put(&mut self, symbol: Symbol, value: Value) {
+        self.0.insert(symbol.name, value);
+    }
+
+    pub fn get(&self, symbol: &Symbol) -> Option<&Value> {
+        self.0.get(&symbol.name)
+    }
+
+    pub fn has(&self, symbol: &Symbol) -> bool {
+        self.0.contains_key(&symbol.name)
     }
 
     // Used in tests only.
     #[allow(dead_code)]
     pub fn put_str(&mut self, key: &str, value: Value) {
-        self.put(Symbol::from_str(key), value);
+        let symbol = match parse(&key.to_string()).unwrap() {
+            Value::Symbol(symbol) => symbol,
+            _ => panic!("Not a symbol: {}", key),
+        };
+
+        self.put(symbol, value);
     }
 }
 
@@ -291,7 +293,7 @@ impl Environment {
 
     pub fn lookup(&self, symbol: &Symbol) -> Option<Value> {
         for frame in self.stack.iter().rev() {
-            if let Some(value) = frame.0.get(symbol) {
+            if let Some(value) = frame.get(symbol) {
                 return Some(value.clone());
             }
         }
@@ -301,7 +303,7 @@ impl Environment {
 
     pub fn find_closure(&mut self, symbol: &Symbol) -> Option<&mut Closure> {
         for frame in self.stack.iter_mut().rev() {
-            if frame.0.contains_key(symbol) {
+            if frame.has(symbol) {
                 return Some(frame);
             }
         }
