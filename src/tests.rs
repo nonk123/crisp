@@ -169,6 +169,22 @@ fn funcall() {
 }
 
 #[test]
+fn defun() {
+    let mut environment = Environment::new_configured();
+
+    assert!(environment.eval_str("(defun)").is_err());
+    assert!(environment.eval_str("(defun 100)").is_err());
+    assert!(environment.eval_str("(defun foo)").is_err());
+    assert!(environment.eval_str("(defun bar [1])").is_err());
+    assert!(environment.eval_str("(defun 100 [hello])").is_err());
+    assert!(environment.eval_str("(defun baz bee)").is_err());
+    assert!(environment.eval_str("(defun bee [baz])").is_ok());
+    assert!(environment.eval_str("(bee)").is_err());
+
+    assert_eq!(environment.eval_str("(bee 'boo)").unwrap(), Value::Nil);
+}
+
+#[test]
 fn factorial() {
     let mut environment = Environment::new_configured();
 

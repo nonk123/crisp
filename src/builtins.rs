@@ -24,16 +24,27 @@ pub fn configure(environment: &mut Environment) {
     }
 }
 
+fn mismatch<R>(environment: &mut Environment, reason: &str) -> Result<R, EvalError> {
+    Err(EvalError::ArgsMismatch(format!(
+        "`{}': {}",
+        environment.current().caller,
+        reason
+    )))
+}
+
 fn list_arg(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     if args.len() == 1 {
         let value = args[0].eval(environment)?;
 
         match value {
             Value::List(_) => Ok(value),
-            _ => Err(EvalError::ArgsMismatch),
+            _ => mismatch(environment, "This function takes a list".into()),
         }
     } else {
-        Err(EvalError::ArgsMismatch)
+        mismatch(
+            environment,
+            "This function takes exactly one list argument".into(),
+        )
     }
 }
 
@@ -46,13 +57,18 @@ fn reduce<T, C: Fn(Value) -> Option<T>, R: Fn(T, T) -> T>(
 ) -> Result<T, EvalError> {
     let mut starting = match conversion(starting.eval(environment)?) {
         Some(some) => some,
-        None => return Err(EvalError::ArgsMismatch),
+        None => return mismatch(environment, "Couldn't convert the starting value".into()),
     };
 
     for value in args.iter() {
         match conversion(value.eval(environment)?) {
             Some(converted) => starting = operation(starting, converted),
-            None => return Err(EvalError::ArgsMismatch),
+            None => {
+                return mismatch(
+                    environment,
+                    format!("Couldn't convert argument {:?}", value).as_str(),
+                )
+            }
         }
     }
 
@@ -67,7 +83,7 @@ fn reduce_car_cdr<T, C: Fn(Value) -> Option<T>, R: Fn(T, T) -> T>(
 ) -> Result<T, EvalError> {
     let car = match args.first() {
         Some(value) => value,
-        None => return Err(EvalError::ArgsMismatch),
+        None => return mismatch(environment, "No car in the list".into()),
     };
 
     let cdr = args[1..].to_vec();
@@ -79,9 +95,9 @@ fn make_progn(args: Vec<Value>) -> Value {
     Value::Funcall(Symbol::from_str("progn"), args)
 }
 
-fn some_args(args: Vec<Value>) -> Result<Vec<Value>, EvalError> {
+fn some_args(environment: &mut Environment, args: Vec<Value>) -> Result<Vec<Value>, EvalError> {
     if args.len() == 0 {
-        Err(EvalError::ArgsMismatch)
+        mismatch(environment, "This function takes one or more args".into())
     } else {
         Ok(args)
     }
@@ -126,12 +142,12 @@ fn debug(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 fn if_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     let condition = match args.get(0) {
         Some(value) => !is_nil(&value.eval(environment)?),
-        None => return Err(EvalError::ArgsMismatch),
+        None => return mismatch(environment, "This function takes a condition".into()),
     };
 
     let if_true = match args.get(1) {
         Some(value) => value,
-        None => return Err(EvalError::ArgsMismatch),
+        None => return mismatch(environment, "This function takes a 'when' parameter".into()),
     };
 
     if condition {
@@ -143,7 +159,10 @@ fn if_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 
 fn while_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     if args.len() < 2 {
-        return Err(EvalError::ArgsMismatch);
+        return mismatch(
+            environment,
+            "This function takes a condition and loop body".into(),
+        );
     }
 
     loop {
@@ -165,7 +184,7 @@ fn symbol_binding(
 ) -> Result<(Symbol, Value), EvalError> {
     match symbol.eval(environment)? {
         Value::Symbol(symbol) => Ok((symbol, value.eval(environment)?)),
-        _ => Err(EvalError::ArgsMismatch),
+        _ => mismatch(environment, "First argument must be a symbol".into()),
     }
 }
 
@@ -174,7 +193,10 @@ fn symbol_binding_argslist(
     args: Vec<Value>,
 ) -> Result<(Symbol, Value), EvalError> {
     if args.len() != 2 {
-        return Err(EvalError::ArgsMismatch);
+        return mismatch(
+            environment,
+            "This function takes a symbol and its value".into(),
+        );
     }
 
     symbol_binding(
@@ -229,10 +251,12 @@ fn to_integer(value: Value) -> Option<Integer> {
 }
 
 fn add(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    let args = some_args(environment, args)?;
+
     Ok(Value::Integer(reduce(
         environment,
         Value::Integer(0),
-        some_args(args)?,
+        args,
         to_integer,
         |x, y| x + y,
     )?))
@@ -242,7 +266,10 @@ fn sub(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     if args.len() == 1 {
         match args.first().unwrap() {
             Value::Integer(i) => Ok(Value::Integer(-i)),
-            _ => Err(EvalError::ArgsMismatch),
+            _ => mismatch(
+                environment,
+                "This function takes one or more integer values".into(),
+            ),
         }
     } else {
         Ok(Value::Integer(reduce_car_cdr(
@@ -255,10 +282,12 @@ fn sub(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 }
 
 fn mul(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    let args = some_args(environment, args)?;
+
     Ok(Value::Integer(reduce(
         environment,
         Value::Integer(1),
-        some_args(args)?,
+        args,
         to_integer,
         |x, y| x * y,
     )?))
@@ -276,7 +305,7 @@ fn div(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 fn car(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     match list_arg(environment, args)? {
         Value::List(elements) => elements.first().unwrap_or(&Value::Nil).eval(environment),
-        _ => Err(EvalError::ArgsMismatch),
+        _ => mismatch(environment, "This function takes a list".into()),
     }
 }
 
@@ -285,18 +314,21 @@ fn cdr(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
         Value::List(elements) => {
             Value::List(elements.iter().cloned().skip(1).collect()).eval(environment)
         }
-        _ => Err(EvalError::ArgsMismatch),
+        _ => mismatch(environment, "This function takes a list".into()),
     }
 }
 
 fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     if args.len() < 2 {
-        return Err(EvalError::ArgsMismatch);
+        return mismatch(
+            environment,
+            "This function takes a function name, arg descriptor, and optional body".into(),
+        );
     }
 
     let name = match args.first().unwrap() {
         Value::Symbol(symbol) => symbol,
-        _ => return Err(EvalError::ArgsMismatch),
+        _ => return mismatch(environment, "The first argument must be a symbol".into()),
     };
 
     let body = make_progn(args[2..].to_vec());
@@ -305,7 +337,12 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 
     let args_list = match args.get(1).unwrap() {
         Value::List(args) => args,
-        _ => return Err(EvalError::ArgsMismatch),
+        _ => {
+            return mismatch(
+                environment,
+                "The second argument must be a list of symbols".into(),
+            )
+        }
     };
 
     for arg in args_list.iter() {
@@ -314,7 +351,7 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
                 match takes.last() {
                     Some(next) => {
                         if symbol.rest && next.rest {
-                            return Err(EvalError::ArgsMismatch);
+                            return mismatch(environment, "Only one rest arg is allowed");
                         }
                     }
                     _ => {}
@@ -322,7 +359,7 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 
                 takes.push(symbol.clone());
             }
-            _ => return Err(EvalError::ArgsMismatch),
+            _ => return mismatch(environment, "Args list contains a non-symbol value"),
         }
     }
 

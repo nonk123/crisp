@@ -85,7 +85,11 @@ impl Function {
                 let value = {
                     let arg = match args.get(0) {
                         Some(_) => args.remove(0),
-                        None => return Err(EvalError::ArgsMismatch),
+                        None => {
+                            return Err(EvalError::ArgsMismatch(
+                                "Not enough args passed to the function".into(),
+                            ))
+                        }
                     };
 
                     match symbol.quote {
@@ -104,22 +108,16 @@ impl Function {
     }
 
     pub fn call(&self, environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-        environment.push_new();
-
-        let result = match self {
+        match self {
             Self::Builtin(function) => function(environment, args),
             Self::Defun(defun) => self.eval_defun(environment, defun, args),
-        };
-
-        environment.pop();
-
-        result
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum EvalError {
-    ArgsMismatch,
+    ArgsMismatch(String),
     SomethingWentWrong, // placeholder.
     VariableIsVoid(String),
     FunctionDefinitionIsVoid(String),
@@ -212,23 +210,29 @@ impl Value {
 }
 
 #[derive(Debug, Clone)]
-pub struct Closure(HashMap<String, Value>);
+pub struct Closure {
+    pub caller: String,
+    scope: HashMap<String, Value>,
+}
 
 impl Closure {
-    pub fn new() -> Self {
-        Self(HashMap::new())
+    pub fn new(caller: String) -> Self {
+        Self {
+            caller,
+            scope: HashMap::new(),
+        }
     }
 
     pub fn put(&mut self, symbol: Symbol, value: Value) {
-        self.0.insert(symbol.name, value);
+        self.scope.insert(symbol.name, value);
     }
 
     pub fn get(&self, symbol: &Symbol) -> Option<&Value> {
-        self.0.get(&symbol.name)
+        self.scope.get(&symbol.name)
     }
 
     pub fn has(&self, symbol: &Symbol) -> bool {
-        self.0.contains_key(&symbol.name)
+        self.scope.contains_key(&symbol.name)
     }
 
     // Used in tests only.
@@ -251,7 +255,7 @@ pub struct Environment {
 impl Environment {
     pub fn new() -> Self {
         Self {
-            stack: vec![Closure::new()],
+            stack: vec![Closure::new("top-level".into())],
             functions_table: HashMap::new(),
         }
     }
@@ -275,12 +279,8 @@ impl Environment {
         self.stack.get_mut(index).unwrap()
     }
 
-    pub fn push_to_stack(&mut self, closure: Closure) {
-        self.stack.push(closure);
-    }
-
-    pub fn push_new(&mut self) {
-        self.push_to_stack(Closure::new())
+    pub fn push_to_stack(&mut self, caller: &String) {
+        self.stack.push(Closure::new(caller.to_string()))
     }
 
     pub fn pop(&mut self) -> Option<Closure> {
@@ -312,7 +312,7 @@ impl Environment {
     }
 
     pub fn call(&mut self, symbol: &Symbol, args: Vec<Value>) -> EvalResult {
-        self.push_new();
+        self.push_to_stack(&symbol.name);
 
         let result = match self.functions_table.get(symbol).cloned() {
             Some(function) => function.call(self, args),
