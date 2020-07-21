@@ -33,13 +33,13 @@ pub type Integer = i32;
 #[derive(Clone)]
 pub struct ArgDescriptor {
     name: Symbol,
-    eval: bool,
+    quote: Quote,
     rest: bool,
 }
 
 impl ArgDescriptor {
-    pub fn new(name: Symbol, eval: bool, rest: bool) -> Self {
-        Self { name, eval, rest }
+    pub fn new(name: Symbol, quote: Quote, rest: bool) -> Self {
+        Self { name, quote, rest }
     }
 }
 
@@ -77,10 +77,9 @@ impl Function {
                 let value = {
                     let list = Value::List(args);
 
-                    if descriptor.eval {
-                        list.eval(environment)?
-                    } else {
-                        list
+                    match descriptor.quote {
+                        Quote::Single => list,
+                        _ => list.eval(environment)?,
                     }
                 };
 
@@ -94,10 +93,9 @@ impl Function {
                         None => return Err(EvalError::ArgsMismatch),
                     };
 
-                    if descriptor.eval {
-                        arg.eval(environment)?
-                    } else {
-                        arg.clone()
+                    match descriptor.quote {
+                        Quote::Single => arg.clone(),
+                        _ => arg.eval(environment)?,
                     }
                 };
 
@@ -127,6 +125,7 @@ impl Function {
 #[derive(Debug)]
 pub enum EvalError {
     ArgsMismatch,
+    SomethingWentWrong, // placeholder.
     VariableIsVoid(String),
     FunctionDefinitionIsVoid(String),
     FailedToParse(ParserError),
@@ -135,13 +134,20 @@ pub enum EvalError {
 
 pub type EvalResult = Result<Value, EvalError>;
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Quote {
+    None,
+    Single,
+    Eval,
+}
+
 #[derive(Debug, Clone, Eq)]
 pub enum Value {
     Nil,
     T,
     Integer(Integer),
     String(String),
-    Symbol { symbol: Symbol, quoted: bool },
+    Symbol { symbol: Symbol, quote: Quote },
     Funcall(Symbol, Vec<Value>),
     List(Vec<Value>),
 }
@@ -167,11 +173,11 @@ impl PartialEq for Value {
             },
             Value::Symbol {
                 symbol: s1,
-                quoted: q1,
+                quote: q1,
             } => match other {
                 Value::Symbol {
                     symbol: s2,
-                    quoted: q2,
+                    quote: q2,
                 } => s1 == s2 && q1 == q2,
                 _ => false,
             },
@@ -190,16 +196,17 @@ impl PartialEq for Value {
 impl Value {
     pub fn eval(&self, environment: &mut Environment) -> EvalResult {
         match self {
-            Self::Symbol { symbol, quoted } => {
-                if *quoted {
-                    Ok(self.clone())
-                } else {
-                    match environment.lookup(&symbol) {
-                        Some(value) => Ok(value),
-                        None => Err(EvalError::VariableIsVoid(symbol.to_string())),
-                    }
-                }
-            }
+            Self::Symbol { symbol, quote } => match quote {
+                Quote::Single => Ok(self.clone()),
+                _ => match environment.lookup(&symbol) {
+                    Some(value) => match quote {
+                        Quote::None => Ok(value),
+                        Quote::Eval => value.eval(environment),
+                        _ => Err(EvalError::SomethingWentWrong),
+                    },
+                    None => Err(EvalError::VariableIsVoid(symbol.to_string())),
+                },
+            },
             Self::Funcall(symbol, args) => environment.call(symbol, args.to_vec()),
             Self::List(elements) => {
                 let mut evaluated: Vec<Self> = Vec::new();
@@ -253,16 +260,17 @@ impl Environment {
         environment
     }
 
-    // Used in tests only.
-
-    #[allow(dead_code)]
     pub fn top_level(&mut self) -> &mut Closure {
         self.stack.first_mut().unwrap()
     }
 
-    #[allow(dead_code)]
     pub fn current(&mut self) -> &mut Closure {
         self.stack.last_mut().unwrap()
+    }
+
+    pub fn outer(&mut self) -> &mut Closure {
+        let index = self.stack.len() - 2;
+        self.stack.get_mut(index).unwrap()
     }
 
     pub fn push_to_stack(&mut self, closure: Closure) {

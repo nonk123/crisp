@@ -1,4 +1,4 @@
-use crate::crisp::{Environment, Integer, Symbol, Value};
+use crate::crisp::{Environment, Integer, Quote, Symbol, Value};
 
 fn parse(buffer: &str) -> crate::parsers::ParserResult {
     crate::parsers::parse(&buffer.into())
@@ -71,12 +71,20 @@ fn string() {
 
 #[test]
 fn symbol() {
-    match parse("'hello").unwrap() {
-        Value::Symbol { symbol, quoted } => {
-            assert!(symbol.as_str() == "hello");
-            assert!(quoted)
+    match parse("'hello") {
+        Ok(Value::Symbol { symbol, quote }) => {
+            assert_eq!(symbol.as_str(), "hello");
+            assert_eq!(quote, Quote::Single)
         }
         _ => panic!("Failed to parse 'hello as symbol"),
+    }
+
+    match parse(",bye") {
+        Ok(Value::Symbol { symbol, quote }) => {
+            assert_eq!(symbol.as_str(), "bye");
+            assert_eq!(quote, Quote::Eval)
+        }
+        _ => panic!("Failed to parse ,bye as symbol"),
     }
 
     // Yes, that is a valid symbol name.
@@ -95,7 +103,7 @@ fn symbol() {
         environment.eval(&"'the-answer".into()).unwrap(),
         Value::Symbol {
             symbol: Symbol::from_str("the-answer"),
-            quoted: true,
+            quote: Quote::Single,
         }
     );
 }
@@ -130,7 +138,7 @@ fn funcall() {
         eval("(car ['a 'b 'c 10 -10 \"meh\"])"),
         Value::Symbol {
             symbol: Symbol::from_str("a"),
-            quoted: true
+            quote: Quote::Single
         }
     );
 
@@ -151,9 +159,8 @@ fn funcall() {
     assert_eq!(eval("(progn (+ 1 2 3) (- 1 2 3))"), Value::Integer(-4));
 
     assert_eq!(eval("(if nil 100)"), Value::Nil);
+    assert_eq!(eval("(if nil 1 0)"), Value::Integer(0));
     assert_eq!(eval("(if t 1 0)"), Value::Integer(1));
-    assert_eq!(eval("(when nil 100)"), Value::Nil);
-    assert_eq!(eval("(when t 100)"), Value::Integer(100));
 }
 
 #[test]
@@ -163,7 +170,7 @@ fn factorial() {
     environment.top_level().put_str("input", Value::Integer(5));
 
     assert_eq!(
-        environment.eval_file("std/factorial.cr".into()).unwrap(),
+        environment.eval_file("test/factorial.cr".into()).unwrap(),
         Value::Integer(120)
     );
 }
@@ -172,10 +179,20 @@ fn factorial() {
 fn fibonacci() {
     let mut environment = Environment::new_configured();
 
-    environment.eval_file("std/fibonacci.cr".into()).unwrap();
+    environment.eval_file("test/fibonacci.cr".into()).unwrap();
 
     assert_eq!(
         environment.eval_str("(fibonacci 5)").unwrap(),
         Value::Integer(5)
+    );
+}
+
+#[test]
+fn quoted_args() {
+    let mut environment = Environment::new_configured();
+
+    assert_eq!(
+        environment.eval_file("test/quoted-args.cr".into()).unwrap(),
+        Value::Integer(120)
     );
 }

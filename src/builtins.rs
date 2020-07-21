@@ -7,9 +7,9 @@ pub fn configure(environment: &mut Environment) {
         ("progn", progn),
         ("debug", debug),
         ("if", if_),
-        ("when", when),
         ("while", while_),
         ("set", set),
+        ("let", let_),
         ("=", eq),
         ("/=", neq),
         ("+", add),
@@ -111,11 +111,18 @@ fn progn(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 }
 
 fn debug(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-    for arg in args {
-        println!("{:?}", arg.eval(environment)?);
+    if args.is_empty() {
+        return Ok(Value::Nil);
     }
 
-    Ok(Value::Nil)
+    let mut last = args.first().unwrap().clone();
+
+    for arg in args {
+        last = arg.eval(environment)?;
+        println!("{:?}", last);
+    }
+
+    Ok(last.clone())
 }
 
 fn if_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
@@ -134,17 +141,6 @@ fn if_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     } else {
         progn(environment, args[2..].to_vec())
     }
-}
-
-fn when(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
-    if args.len() < 2 {
-        return Err(EvalError::ArgsMismatch);
-    }
-
-    let condition = args.first().unwrap().clone();
-    let action = make_progn(args[1..].to_vec());
-
-    if_(environment, vec![condition, action])
 }
 
 fn while_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
@@ -170,7 +166,7 @@ fn symbol_binding(
     value: Value,
 ) -> Result<(Symbol, Value), EvalError> {
     match symbol.eval(environment)? {
-        Value::Symbol { symbol, quoted: _ } => {
+        Value::Symbol { symbol, quote: _ } => {
             let value = value.eval(environment)?;
             Ok((symbol, value))
         }
@@ -202,6 +198,12 @@ fn set(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
         environment.top_level().put(symbol, value.clone());
     }
 
+    Ok(value)
+}
+
+fn let_(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
+    let (symbol, value) = symbol_binding_argslist(environment, args)?;
+    environment.outer().put(symbol, value.clone());
     Ok(value)
 }
 
@@ -298,7 +300,7 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
     }
 
     let name = match args.first().unwrap() {
-        Value::Symbol { symbol, quoted: _ } => symbol,
+        Value::Symbol { symbol, quote: _ } => symbol,
         _ => return Err(EvalError::ArgsMismatch),
     };
 
@@ -313,8 +315,8 @@ fn defun(environment: &mut Environment, args: Vec<Value>) -> EvalResult {
 
     for arg in args_list.iter() {
         match arg {
-            Value::Symbol { symbol, quoted } => {
-                takes.push(ArgDescriptor::new(symbol.clone(), !quoted, false))
+            Value::Symbol { symbol, quote } => {
+                takes.push(ArgDescriptor::new(symbol.clone(), quote.clone(), false))
             }
             _ => return Err(EvalError::ArgsMismatch),
         }
