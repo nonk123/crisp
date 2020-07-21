@@ -191,7 +191,7 @@ fn factorial() {
     environment.top_level().put_str("input", Value::Integer(5));
 
     assert_eq!(
-        environment.eval_file("test/factorial.cr".into()).unwrap(),
+        environment.eval_file("test/factorial.crisp".into()).unwrap(),
         Value::Integer(120)
     );
 }
@@ -200,7 +200,7 @@ fn factorial() {
 fn fibonacci() {
     let mut environment = Environment::new_configured();
 
-    environment.eval_file("test/fibonacci.cr".into()).unwrap();
+    environment.eval_file("test/fibonacci.crisp".into()).unwrap();
 
     assert_eq!(
         environment.eval_str("(fibonacci 5)").unwrap(),
@@ -213,7 +213,7 @@ fn quoted_args() {
     let mut environment = Environment::new_configured();
 
     assert_eq!(
-        environment.eval_file("test/quoted-args.cr".into()).unwrap(),
+        environment.eval_file("test/quoted-args.crisp".into()).unwrap(),
         Value::Integer(120)
     );
 }
@@ -222,7 +222,7 @@ fn quoted_args() {
 fn rest_args() {
     let mut environment = Environment::new_configured();
 
-    environment.eval_file("test/rest-args.cr".into()).unwrap();
+    environment.eval_file("test/rest-args.crisp".into()).unwrap();
 
     assert_eq!(
         environment.eval_str("(rcar 1 2 3)").unwrap(),
